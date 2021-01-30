@@ -43,74 +43,65 @@ def entry_rate(workbook, worksheet, column_number):
     return rate
 
 def est_completion_date(workbook, cases_entered, rate, total_cases):
+    """ Returns estimated completed date of entry given workbook name, cases entered, rate of entry and total cases.
+    Includes weekends in rate calculation. """
     cases_left = total_cases - cases_entered
     days_left = cases_left/rate
     end_date = datetime.datetime.now() + datetime.timedelta(days=days_left)
     return end_date  
 
-worksheet_dict = {
-    'BEATS.DUP REDCap Entry Project.xlsx': ['enter first - BEATS&DUP','enter second - BEATS only'],
-    'Retrospective IRB data entry tracking.xlsx': ['All Phase 2'],
+# workbook_dict stores {workbook: {
+# worksheet(s): {column name(s): column number, cases entered: <int>, rate of entry: <float>}, 
+# workbook info: {total cases: <int>, total cases entered: <int>, total rate of entry: <float>, completion date: <datetime.datetime>}
+# }}
+workbook_dict = {
+    'BEATS.DUP REDCap Entry Project.xlsx': {
+        'enter first - BEATS&DUP': {},
+        'enter second - BEATS only': {},
+        'workbook info': {
+            'total cases': 201,
+        }},
+    'Retrospective IRB data entry tracking.xlsx': {
+        'All Phase 2': {},
+        'workbook info': {
+            'total cases': 541,
+        }
+      },
 }
 
 column_names = ['Initials', 'Date of Entry']
 
-total_cases = {
-    'BEATS.DUP REDCap Entry Project.xlsx': 201,
-    'Retrospective IRB data entry tracking.xlsx': 541,
-}
-# all_columns stores [[workbook, worksheet, column name, column number]] for every column named "Initials" or "Date of Entry"
-all_columns = []
-
-# matching column names with column number and storing the following information in list 'all_columns' for each sheet: [workbook name, sheet name, column name, column number]
-for workbook in worksheet_dict:
-    for worksheet in worksheet_dict[workbook]:
-        for column_name in column_names:
-            column = find_column(workbook, worksheet, column_name)
-            all_columns.append([workbook, worksheet, column_name, column])
-
-for col in all_columns:
-    # finding count of data entered for each sheet
-    if col[2] == 'Initials':
-        cases_entered = count(col[0], col[1], col[3])
-        col[len(col):len(col)] = [cases_entered]
-    # finding rate of entry for each sheet
-    elif col[2] == 'Date of Entry':
-        rate_of_entry = entry_rate(col[0],col[1],col[3])
-        col[len(col):len(col)] = [rate_of_entry]
-
-
-# workbook_data stores {workbook name:[cases entered, rate, total cases, completion date]}
-workbook_data ={} 
-
-for workbook in worksheet_dict:
-    for col in all_columns:
-        if col[0] == workbook:
-            if col[0] not in workbook_data:
-                if col[2] == 'Initials':
-                    workbook_data[workbook]=[col[4],0,total_cases[workbook]]
-                elif col[2] == 'Date of Entry':
-                    workbook_data[workbook]=[0,col[4],total_cases[workbook]]
-            else:
-                if col[2] == 'Initials':
-                    workbook_data[workbook][0:1] = [workbook_data[workbook][0] + col[4]]
-                elif col[2] == 'Date of Entry':
-                    workbook_data[workbook][1:2] = [workbook_data[workbook][1] + col[4]]
-    workbook_data[workbook][1:2] = [(workbook_data[workbook][1]/len(worksheet_dict[workbook]))]
-for workbook in workbook_data:
-    comp_date = est_completion_date(workbook,workbook_data[workbook][0],workbook_data[workbook][1], workbook_data[workbook][2])
-    workbook_data[workbook][len(workbook):len(workbook)] = [comp_date]
-
 wb_data = openpyxl.load_workbook('IRC Data Entry Updates.xlsx')
 ws = wb_data['Sheet1']
+
 row = 2
-for workbook in workbook_data:
+
+for workbook in workbook_dict:
+    workbook_data = workbook_dict[workbook]['workbook info']
+    for worksheet in workbook_dict[workbook]:
+        if worksheet != 'workbook info':
+            worksheet_data = workbook_dict[workbook][worksheet] 
+            for column_name in column_names:
+                column_number = find_column(workbook, worksheet, column_name)
+                worksheet_data[column_name] = column_number
+                if column_name == 'Initials':
+                    cases_entered = count(workbook, worksheet, worksheet_data[column_name])
+                    worksheet_data['cases entered'] = cases_entered
+                    workbook_data['total cases entered'] = workbook_data.get('total cases entered', 0) + cases_entered
+                elif column_name == 'Date of Entry':
+                    rate_of_entry = entry_rate(workbook, worksheet, worksheet_data[column_name])
+                    worksheet_data['rate of entry'] = rate_of_entry
+                    workbook_data['total rate of entry'] = workbook_data.get('total rate of entry', 0) + rate_of_entry
+    workbook_data['total rate of entry'] /= (len(workbook_dict[workbook]) - 1)
+    comp_date = est_completion_date(workbook,workbook_data['total cases entered'],workbook_data['total rate of entry'], workbook_data['total cases'])
+    workbook_data['completion date'] = comp_date
     ws.cell(row = row, column = 1).value = workbook
-    ws.cell(row = row, column = 2).value = workbook_data[workbook][0]
-    ws.cell(row = row, column = 3).value = workbook_data[workbook][1]
-    ws.cell(row = row, column = 4).value = workbook_data[workbook][2]
-    ws.cell(row = row, column = 5).value = workbook_data[workbook][3]
+    ws.cell(row = row, column = 2).value = workbook_data['total cases entered']
+    ws.cell(row = row, column = 3).value = workbook_data['total rate of entry']
+    ws.cell(row = row, column = 4).value = workbook_data['total cases']
+    ws.cell(row = row, column = 5).value = workbook_data['completion date']
     row += 1
+
 wb_data.save('IRC Data Entry Updates.xlsx')
 
 
